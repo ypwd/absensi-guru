@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Absensi Guru</title>
+
+  <script src="https://unpkg.com/html5-qrcode"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f3f4f6;
+      color: #1f2937;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: auto;
+      padding: 20px;
+    }
+
+    h1 {
+      text-align: center;
+    }
+
+    .card {
+      background: white;
+      padding: 20px;
+      border-radius: 16px;
+      box-shadow: 0 4px 15px rgba(0,0,0,.1);
+    }
+
+    .modes {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    button {
+      border: none;
+      border-radius: 10px;
+      padding: 14px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .mode {
+      flex: 1;
+      background: #e5e7eb;
+    }
+
+    .mode.active {
+      background: #2563eb;
+      color: white;
+    }
+
+    #btnCamera {
+      width: 100%;
+      background: #16a34a;
+      color: white;
+    }
+
+    #reader {
+      margin-top: 20px;
+      width: 100%;
+    }
+
+    #status {
+      display: none;
+      margin-top: 15px;
+      padding: 14px;
+      border-radius: 10px;
+      text-align: center;
+    }
+
+    .info {
+      display: block !important;
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
+
+    .success {
+      display: block !important;
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .error {
+      display: block !important;
+      background: #fee2e2;
+      color: #991b1b;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <h1>ABSENSI GURU</h1>
+
+  <div class="card">
+
+    <div class="modes">
+      <button id="masuk" class="mode active"
+              onclick="setMode('MASUK')">
+        MASUK
+      </button>
+
+      <button id="pulang" class="mode"
+              onclick="setMode('PULANG')">
+        PULANG
+      </button>
+    </div>
+
+    <button id="btnCamera" onclick="startScanner()">
+      BUKA KAMERA & SCAN QR
+    </button>
+
+    <div id="reader"></div>
+
+    <div id="status"></div>
+
+  </div>
+</div>
+
+
+<script>
+
+const WEB_APP_URL =
+  'https://script.google.com/macros/s/AKfycbywBHRx0nve-VI954J7K_SLyHiotXdkGY7duHEI4Pomgb9tIQM8GQiTi-4KwQZNnrhg/exec';
+
+let mode = 'MASUK';
+let scanner = null;
+let sedangProses = false;
+
+
+// =====================================================
+// PILIH MODE
+// =====================================================
+
+function setMode(pilihan) {
+
+  mode = pilihan;
+
+  document.getElementById('masuk').className = 'mode';
+  document.getElementById('pulang').className = 'mode';
+
+  if (mode === 'MASUK') {
+    document.getElementById('masuk').className =
+      'mode active';
+  } else {
+    document.getElementById('pulang').className =
+      'mode active';
+  }
+
+}
+
+
+// =====================================================
+// STATUS
+// =====================================================
+
+function showStatus(pesan, tipe) {
+
+  const status = document.getElementById('status');
+
+  status.className = tipe;
+  status.textContent = pesan;
+}
+
+
+// =====================================================
+// BUKA SCANNER
+// =====================================================
+
+async function startScanner() {
+
+  if (sedangProses) return;
+
+  try {
+
+    showStatus('Membuka kamera...', 'info');
+
+    scanner = new Html5Qrcode('reader');
+
+    await scanner.start(
+
+      { facingMode: 'environment' },
+
+      {
+        fps: 10,
+        qrbox: 250
+      },
+
+      onScanSuccess,
+
+      function() {
+        // Error pembacaan QR diabaikan
+      }
+    );
+
+    showStatus(
+      'Kamera aktif. Arahkan ke QR Code Guru.',
+      'info'
+    );
+
+  } catch (error) {
+
+    console.error(error);
+
+    showStatus(
+      'Kamera gagal dibuka: ' +
+      (error.message || error),
+      'error'
+    );
+  }
+}
+
+
+// =====================================================
+// QR BERHASIL DIBACA
+// =====================================================
+
+async function onScanSuccess(decodedText) {
+
+  if (sedangProses) return;
+
+  sedangProses = true;
+
+  const idGuru = String(decodedText).trim();
+
+  showStatus(
+    'QR terbaca. Mengambil lokasi GPS...',
+    'info'
+  );
+
+
+  // Hentikan kamera
+  try {
+    await scanner.stop();
+    await scanner.clear();
+  } catch (e) {
+    console.log(e);
+  }
+
+
+  // Ambil GPS
+  navigator.geolocation.getCurrentPosition(
+
+    function(position) {
+
+      kirimAbsensi(
+        idGuru,
+        position.coords.latitude,
+        position.coords.longitude
+      );
+
+    },
+
+    function(error) {
+
+      sedangProses = false;
+
+      showStatus(
+        'GPS tidak dapat diakses: ' +
+        error.message,
+        'error'
+      );
+    },
+
+    {
+      enableHighAccuracy: true,
+      timeout: 20000,
+      maximumAge: 0
+    }
+  );
+}
+
+
+// =====================================================
+// KIRIM KE GOOGLE APPS SCRIPT
+// =====================================================
+
+async function kirimAbsensi(
+  idGuru,
+  latitude,
+  longitude
+) {
+
+  try {
+
+    showStatus(
+      'Mengirim absensi...',
+      'info'
+    );
+
+    const response = await fetch(
+      WEB_APP_URL,
+      {
+        method: 'POST',
+
+        body: JSON.stringify({
+          idGuru: idGuru,
+          status: mode,
+          latitude: latitude,
+          longitude: longitude
+        })
+      }
+    );
+
+    const result = await response.json();
+
+    if (result.success) {
+
+      showStatus(
+        'ABSENSI BERHASIL\n' +
+        result.message +
+        '\nNama: ' + result.guru.nama +
+        '\nStatus: ' + result.status +
+        '\nJam: ' + result.jam +
+        '\nJarak: ' + result.jarak + ' meter',
+        'success'
+      );
+
+    } else {
+
+      showStatus(
+        result.message,
+        'error'
+      );
+    }
+
+  } catch (error) {
+
+    console.error(error);
+
+    showStatus(
+      'Gagal mengirim absensi: ' +
+      error.message,
+      'error'
+    );
+
+  } finally {
+
+    sedangProses = false;
+  }
+}
+
+</script>
+
+</body>
+</html>
