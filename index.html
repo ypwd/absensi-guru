@@ -184,7 +184,20 @@ async function startScanner() {
 
   if (sedangProses) return;
 
+  const btnCamera = document.getElementById('btnCamera');
+
+  // Jangan membuat scanner baru jika kamera masih aktif
+  if (scanner) {
+    showStatus('Kamera masih aktif.', 'info');
+    return;
+  }
+
   try {
+
+    btnCamera.disabled = true;
+
+    // Bersihkan sisa tampilan scanner sebelumnya
+    document.getElementById('reader').innerHTML = '';
 
     showStatus('Membuka kamera...', 'info');
 
@@ -215,11 +228,32 @@ async function startScanner() {
 
     console.error(error);
 
+    // Pastikan objek scanner dilepas jika gagal membuka kamera
+    if (scanner) {
+      try {
+        await scanner.clear();
+      } catch (e) {
+        console.log(e);
+      }
+    }
+
+    scanner = null;
+    document.getElementById('reader').innerHTML = '';
+
     showStatus(
       'Kamera gagal dibuka: ' +
       (error.message || error),
       'error'
     );
+
+  } finally {
+
+    // Tombol hanya dinonaktifkan saat proses membuka kamera
+    if (scanner) {
+      btnCamera.disabled = true;
+    } else {
+      btnCamera.disabled = false;
+    }
   }
 }
 
@@ -242,12 +276,23 @@ async function onScanSuccess(decodedText) {
   );
 
 
-  // Hentikan kamera
+  // Hentikan kamera dan lepaskan objek scanner sepenuhnya
   try {
-    await scanner.stop();
-    await scanner.clear();
+
+    if (scanner) {
+      await scanner.stop();
+      await scanner.clear();
+    }
+
   } catch (e) {
-    console.log(e);
+
+    console.log('Gagal menghentikan kamera:', e);
+
+  } finally {
+
+    // Penting agar scan berikutnya membuat instance kamera yang bersih
+    scanner = null;
+    document.getElementById('reader').innerHTML = '';
   }
 
 
@@ -267,6 +312,7 @@ async function onScanSuccess(decodedText) {
     function(error) {
 
       sedangProses = false;
+      document.getElementById('btnCamera').disabled = false;
 
       showStatus(
         'GPS tidak dapat diakses: ' +
@@ -350,6 +396,8 @@ async function kirimAbsensi(
   } finally {
 
     sedangProses = false;
+    scanner = null;
+    document.getElementById('btnCamera').disabled = false;
   }
 }
 
