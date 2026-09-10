@@ -71,6 +71,55 @@
       width: 100%;
     }
 
+    /* =====================================================
+       BANNER / PESAN HARIAN
+       ===================================================== */
+    #pesanHarian {
+      display: none;
+      margin: 0 0 18px;
+      border-radius: 14px;
+      overflow: hidden;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      box-shadow: 0 3px 12px rgba(0,0,0,.06);
+    }
+
+    #pesanHarian.gambar {
+      background: #fff;
+    }
+
+    #pesanHarian img {
+      display: block;
+      width: 100%;
+      height: auto;
+      max-height: 280px;
+      object-fit: cover;
+    }
+
+    #pesanHarian .pesan-teks {
+      padding: 18px;
+      text-align: center;
+      font-size: 17px;
+      line-height: 1.6;
+      font-weight: 600;
+      white-space: pre-line;
+    }
+
+    #pesanHarian .pesan-tanggal {
+      padding: 0 18px 15px;
+      text-align: center;
+      font-size: 12px;
+      color: #64748b;
+    }
+
+    #pesanHarian.loading {
+      display: block;
+      padding: 14px;
+      text-align: center;
+      color: #64748b;
+      font-size: 14px;
+    }
+
     #status {
       display: none;
       margin-top: 15px;
@@ -119,6 +168,12 @@
       </button>
     </div>
 
+    <!-- =================================================
+         PESAN / BANNER HARIAN
+         Diisi otomatis dari Google Apps Script.
+         ================================================= -->
+    <div id="pesanHarian"></div>
+
     <button id="btnCamera" onclick="startScanner()">
       BUKA KAMERA & SCAN QR
     </button>
@@ -160,6 +215,90 @@ function setMode(pilihan) {
       'mode active';
   }
 
+}
+
+
+// =====================================================
+// PESAN / BANNER HARIAN
+// Frontend GitHub mengambil data dari Google Apps Script.
+// =====================================================
+
+async function loadPesanHarian() {
+  const box = document.getElementById('pesanHarian');
+
+  try {
+    box.className = 'loading';
+    box.textContent = 'Memuat informasi hari ini...';
+
+    const response = await fetch(
+      WEB_APP_URL + '?action=getPesanHarian&ts=' + Date.now(),
+      {
+        method: 'GET',
+        cache: 'no-store'
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error('Server mengembalikan status ' + response.status);
+    }
+
+    const result = await response.json();
+
+    if (!result.success || !result.adaPesan) {
+      box.style.display = 'none';
+      box.className = '';
+      return;
+    }
+
+    box.innerHTML = '';
+    box.className = '';
+
+    if (String(result.jenis).toUpperCase() === 'GAMBAR') {
+      box.classList.add('gambar');
+
+      const img = document.createElement('img');
+      img.src = result.urlGambar;
+      img.alt = result.isi || 'Informasi hari ini';
+      img.loading = 'eager';
+
+      img.onerror = function() {
+        box.className = 'loading';
+        box.textContent = 'Gambar informasi hari ini tidak dapat ditampilkan.';
+      };
+
+      box.appendChild(img);
+
+      if (result.isi) {
+        const teks = document.createElement('div');
+        teks.className = 'pesan-teks';
+        teks.textContent = result.isi;
+        box.appendChild(teks);
+      }
+
+    } else {
+      const teks = document.createElement('div');
+      teks.className = 'pesan-teks';
+      teks.textContent = result.isi || '';
+      box.appendChild(teks);
+    }
+
+    if (result.tanggal) {
+      const tanggal = document.createElement('div');
+      tanggal.className = 'pesan-tanggal';
+      tanggal.textContent = 'Informasi hari ini';
+      box.appendChild(tanggal);
+    }
+
+    box.style.display = 'block';
+
+  } catch (error) {
+    console.error('Gagal memuat pesan harian:', error);
+
+    // Banner bukan bagian wajib dari absensi.
+    // Jika API gagal, absensi tetap dapat digunakan.
+    box.style.display = 'none';
+    box.className = '';
+  }
 }
 
 
@@ -400,6 +539,10 @@ async function kirimAbsensi(
     document.getElementById('btnCamera').disabled = false;
   }
 }
+
+  // Ambil banner/pesan harian saat halaman dibuka.
+  // Jika API tidak tersedia, fungsi absensi tetap berjalan.
+  loadPesanHarian();
 
 </script>
 
